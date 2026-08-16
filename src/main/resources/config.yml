@@ -1,0 +1,8 @@
+gui:
+  title: "Player Heads"
+messages:
+  no-permission: "You do not have permission to use this command."
+  player-only: "This command can only be used by a player."
+  loading: "Loading the player head..."
+  not-found: "No usable skin profile was found for that player."
+  given: "Player head added to your inventory."
