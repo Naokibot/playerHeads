@@ -18,7 +18,9 @@ import org.bukkit.profile.PlayerProfile;
 public final class PlayerDirectory {
     public List<OfflinePlayer> knownPlayers() {
         Map<UUID, OfflinePlayer> players = new LinkedHashMap<>();
-        for (Player online : Bukkit.getOnlinePlayers()) players.put(online.getUniqueId(), online);
+        for (Player online : Bukkit.getOnlinePlayers()) {
+            players.put(online.getUniqueId(), online);
+        }
         Arrays.stream(Bukkit.getOfflinePlayers())
                 .filter(player -> player.getName() != null && !player.getName().isBlank())
                 .sorted(Comparator.comparingLong(OfflinePlayer::getLastPlayed).reversed())
@@ -27,9 +29,13 @@ public final class PlayerDirectory {
     }
 
     public Optional<OfflinePlayer> findKnownPlayer(String requestedName) {
-        if (requestedName == null || requestedName.isBlank()) return Optional.empty();
+        if (requestedName == null || requestedName.isBlank()) {
+            return Optional.empty();
+        }
         Player online = Bukkit.getPlayerExact(requestedName);
-        if (online != null) return Optional.of(online);
+        if (online != null) {
+            return Optional.of(online);
+        }
         String needle = requestedName.toLowerCase(Locale.ROOT);
         return Arrays.stream(Bukkit.getOfflinePlayers())
                 .filter(player -> player.getName() != null)
@@ -38,40 +44,71 @@ public final class PlayerDirectory {
     }
 
     public CompletableFuture<ResolvedProfile> resolveProfile(String requestedName) {
-        if (!isSafeInput(requestedName)) return CompletableFuture.completedFuture(null);
-        Optional<OfflinePlayer> known = findKnownPlayer(requestedName);
-        PlayerProfile baseProfile;
-        String displayName;
-        if (known.isPresent()) {
-            OfflinePlayer player = known.get();
-            baseProfile = player.getPlayerProfile();
-            displayName = player.getName() == null ? requestedName : player.getName();
-        } else {
-            baseProfile = Bukkit.createPlayerProfile(requestedName);
-            displayName = requestedName;
+        if (!isSafeInput(requestedName)) {
+            return CompletableFuture.completedFuture(null);
         }
-        if (hasSkin(baseProfile)) return CompletableFuture.completedFuture(new ResolvedProfile(baseProfile, displayName));
-        return baseProfile.update().thenApply(updated -> hasSkin(updated) ? new ResolvedProfile(updated, displayName) : null);
+
+        try {
+            Optional<OfflinePlayer> known = findKnownPlayer(requestedName);
+            PlayerProfile baseProfile;
+            String displayName;
+            if (known.isPresent()) {
+                OfflinePlayer player = known.get();
+                baseProfile = player.getPlayerProfile();
+                displayName = player.getName() == null ? requestedName : player.getName();
+            } else {
+                baseProfile = Bukkit.createPlayerProfile(requestedName);
+                displayName = requestedName;
+            }
+            return completeProfile(baseProfile, displayName);
+        } catch (IllegalArgumentException ex) {
+            return CompletableFuture.completedFuture(null);
+        }
     }
 
     public CompletableFuture<ResolvedProfile> resolveProfile(OfflinePlayer player) {
         String name = player.getName();
-        if (name == null || name.isBlank()) return CompletableFuture.completedFuture(null);
-        PlayerProfile baseProfile = player.getPlayerProfile();
-        if (hasSkin(baseProfile)) return CompletableFuture.completedFuture(new ResolvedProfile(baseProfile, name));
-        return baseProfile.update().thenApply(updated -> hasSkin(updated) ? new ResolvedProfile(updated, name) : null);
+        if (name == null || name.isBlank()) {
+            return CompletableFuture.completedFuture(null);
+        }
+        try {
+            return completeProfile(player.getPlayerProfile(), name);
+        } catch (IllegalArgumentException ex) {
+            return CompletableFuture.completedFuture(null);
+        }
     }
 
     public List<String> suggestions(String prefix) {
         String needle = prefix == null ? "" : prefix.toLowerCase(Locale.ROOT);
-        return knownPlayers().stream().map(OfflinePlayer::getName)
-                .filter(name -> name != null && name.toLowerCase(Locale.ROOT).startsWith(needle)).limit(50).toList();
+        return knownPlayers().stream()
+                .map(OfflinePlayer::getName)
+                .filter(name -> name != null && name.toLowerCase(Locale.ROOT).startsWith(needle))
+                .limit(50)
+                .toList();
     }
 
     static boolean isSafeInput(String name) {
-        if (name == null) return false;
+        if (name == null) {
+            return false;
+        }
         String trimmed = name.trim();
-        return !trimmed.isEmpty() && trimmed.length() <= 64 && trimmed.indexOf('\n') < 0 && trimmed.indexOf('\r') < 0;
+        return !trimmed.isEmpty()
+                && trimmed.length() <= 64
+                && trimmed.indexOf('\n') < 0
+                && trimmed.indexOf('\r') < 0;
+    }
+
+    private CompletableFuture<ResolvedProfile> completeProfile(PlayerProfile profile, String displayName) {
+        if (hasSkin(profile)) {
+            return CompletableFuture.completedFuture(new ResolvedProfile(profile, displayName));
+        }
+        try {
+            return profile.update()
+                    .thenApply(updated -> hasSkin(updated) ? new ResolvedProfile(updated, displayName) : null)
+                    .exceptionally(ignored -> null);
+        } catch (RuntimeException ex) {
+            return CompletableFuture.completedFuture(null);
+        }
     }
 
     private static boolean hasSkin(PlayerProfile profile) {
