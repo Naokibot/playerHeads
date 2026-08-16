@@ -1,0 +1,30 @@
+name: Build
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: maven
+      - name: Build against Spigot 1.21.1 API
+        run: mvn -B -ntp clean package
+      - name: Verify release jar
+        run: |
+          JAR=target/playerheadslite-1.1.0.jar
+          test -f "$JAR"
+          ! jar tf "$JAR" | grep -q 'PlayerDeathListener'
+          jar tf "$JAR" | grep -q 'HeadGui.class'
+          unzip -t "$JAR"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: PlayerHeadsLite-1.1.0-Spigot-1.21.1
+          path: target/playerheadslite-1.1.0.jar
